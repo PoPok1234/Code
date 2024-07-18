@@ -1,0 +1,24 @@
+using UnityEngine;
+
+namespace Pawnshop.Items
+{
+    public class ItemSpawner : MonoBehaviour
+    {
+        [SerializeField] private ItemsDataBase _itemsDataBase;
+        private Transform _itemSlot;
+        public static ItemSpawner Instance;
+        [field: SerializeField] public Pawnshop.Items.Item CurrentItem { get; private set; } 
+        private void Awake()
+        {
+            Instance = this;
+
+            _itemSlot = GameObject.Find("ItemSlot").GetComponent<Transform>();
+        }
+
+        public void Spawn()
+        {
+            int randomIndex = UnityEngine.Random.Range(0, _itemsDataBase.Items.Count);
+            CurrentItem = Instantiate(_itemsDataBase.Items[randomIndex].Prefab, _itemSlot.position, Quaternion.identity, _itemSlot);
+        }
+    }
+}
