@@ -1,0 +1,132 @@
+using System;
+using System.Collections.Generic;
+using Core.Characters;
+using Core.PlayerData;
+using Core.States;
+using Core.Utilities;
+using UnityEngine;
+
+namespace Core.Buildings
+{
+    public interface IBuilding
+    {
+        BuildingType BuildingType { get; }
+        void InitializeView(BuildingBehaviour view);
+
+        int UpgradeLevel { get; }
+
+        void InitializeUpgradeLevel(int level);
+        
+        IIntReadOnlyProperty Income { get; }
+
+        void InitializeIncome(int income);
+
+        void UpgradeCurrentLevel(int level);
+
+        void SettleCharacter(ICharacterModel characterModel, int slotID);
+        
+        long BuildingID { get; }
+
+        void SubscribeOnCharacterSettled(Action<long, int, Sprite> onCharacterSettled);
+        
+        void UnSubscribeOnCharacterSettled(Action<long, int, Sprite> onCharacterSettled);
+        
+        Dictionary<int, ICharacterModel> Settlers { get; }
+
+        void InitBusiness(BusinessDescriptor businessDescriptor);
+        
+        IBusiness Business { get; }
+    }
+    
+    public abstract class Building : IBuilding
+    {
+        protected BuildingBehaviour _view;
+        protected long _buildingID;
+        public abstract BuildingType BuildingType { get; }
+
+        private IntProperty _income = new IntProperty(0);
+
+        private Dictionary<int,ICharacterModel> _settlers = new Dictionary<int,ICharacterModel>();
+        public Dictionary<int, ICharacterModel> Settlers => _settlers;
+        
+        private Action<long, int, Sprite> _onCharacterSettled;
+        private Action _buildingDataChanged;
+
+        private IBusiness _business;
+
+        public IBusiness Business => _business;
+        public IIntReadOnlyProperty Income => _income;
+
+        public int UpgradeLevel { get; protected set; }
+
+        public long BuildingID => _buildingID;
+
+        public void InitializeView(BuildingBehaviour view)
+        {
+            _view = view;
+        }
+        
+        public void UpgradeCurrentLevel(int currentLevel)
+        {
+            UpgradeLevel += currentLevel;
+        }
+        public void InitializeUpgradeLevel(int level)
+        {
+            UpgradeLevel = level;
+        }
+        
+        public void InitializeIncome(int income)
+        {
+            _income.SetValue(income);
+        }
+
+        public void SettleCharacter(ICharacterModel characterModel, int slotID)
+        {
+            _settlers[slotID] = characterModel;
+            _onCharacterSettled?.Invoke(characterModel.CharacterID, slotID, characterModel.MainPortrait);
+            
+            foreach (var settler in _settlers)
+            {
+                Debug.Log(settler.Value.CharacterID);
+            }
+        }
+        
+        public void SubscribeOnCharacterSettled(Action<long, int, Sprite> onCharacterSettled)
+        {
+            _onCharacterSettled += onCharacterSettled;
+        }
+
+        public void UnSubscribeOnCharacterSettled(Action<long, int, Sprite> onCharacterSettled)
+        {
+            _onCharacterSettled -= onCharacterSettled;
+        }
+
+        public void InitBusiness(BusinessDescriptor businessDescriptor)
+        {
+            _business = new Business();
+            _business.Initialize(businessDescriptor);
+
+            _business.IsComplete.AddValueChangedListener(BusinessCompleteAlert);
+        }
+
+        private void BusinessCompleteAlert(bool isComplete)
+        {
+            
+            if (isComplete)
+            {
+                _view.BusinessCompleteIndicator.SetActive(true);
+                return;
+            }
+            
+            _view.BusinessCompleteIndicator.SetActive(false);
+        }
+        
+        
+    }
+    
+    public enum BuildingType
+    {
+        SnackBar = 1,
+        Mansion = 7,
+    }
+}
