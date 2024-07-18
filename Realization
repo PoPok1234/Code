@@ -1,0 +1,168 @@
+using UnityEngine;
+
+namespace Core.UI
+{
+    
+    public interface IView
+    {
+        void Show();
+        void Hide();
+        void Initialize();
+    }
+    
+    public interface IPaperController
+    {
+        void Show();
+        void Hide();
+        void Initialize();
+    }
+
+    public interface IModel
+    { }
+    
+    public interface IModel<T> : IModel
+    {
+        T Data { get; }
+    }
+
+    public interface IPaperController<TModel, TView> : IPaperController where TModel : IModel where TView : IView
+    {
+        TModel Model { get; }
+        TView View { get; }
+    }
+    
+    public interface IPaperController<TModel, TProxyView, TView> : IPaperController 
+        where TModel : IModel
+        where TProxyView : IProxyView<TView>
+        where TView : IView
+    {
+        TModel Model { get; }
+        TProxyView ProxyView { get; }
+    }
+
+    public interface IView<TController> : IView where TController : IPaperController
+    {
+        TController PaperController { get; }
+        void InitPaperController(TController controller);
+    }
+    
+    public interface IProxyView<TView> where TView : IView
+    {
+        TView View { get; }
+        bool IsPrepared { get; }
+        void Prepare();
+    }
+    
+    public abstract class BaseProxyView<TView> : IProxyView<TView> where TView : IView
+    {
+        public bool IsPrepared => View != null;
+
+        public TView View { get; protected set; }
+
+        protected readonly IUIManager _uiManager;
+
+        public abstract void Prepare();
+
+
+        public BaseProxyView(IUIManager uiManager)
+        {
+            _uiManager = uiManager;
+        }
+    }
+    
+    public abstract class BaseView : MonoBehaviour, IView
+    {
+        [SerializeField] private bool _hideOnAwake;
+        public bool IsOpen { get; protected set; }
+
+        public abstract ViewType ViewTypeName { get; }
+
+        public void Show()
+        {
+            IsOpen = true;
+            gameObject.SetActive(true);
+            OnShow();
+        }
+
+        public void Hide()
+        {
+            IsOpen = false;
+            gameObject.SetActive(false);
+            OnHide();
+        }
+        
+
+        protected virtual void OnAwake() { }
+        protected virtual void OnStart() { }
+        protected virtual void OnInitialize() { }
+        protected virtual void OnShow() { }
+
+        protected virtual void OnHide() { }
+
+        protected virtual void OnDestroyInner() { }
+
+        private void Awake()
+        {
+            if (_hideOnAwake)
+            {
+                Hide();
+            }
+
+            OnAwake();
+        }
+        private void Start()
+        {
+            OnStart();
+        }
+
+        private void OnDestroy()
+        {
+            OnDestroyInner();
+        }
+
+        public virtual void Initialize()
+        {
+            OnInitialize();
+            SubscribeOnEvents();
+        }
+        protected virtual void SubscribeOnEvents()
+        {
+            
+        }
+    }
+
+    public abstract class BasePaperController : IPaperController
+    {
+        protected bool _isInited = false;
+        public abstract void Show();
+
+        public abstract void Hide();
+
+        public abstract void Initialize();
+    }
+
+    
+    
+    public enum ScreenType
+    {
+        Loading,
+        Gameplay
+    }
+    
+    public enum PopupType
+    {
+        
+    }
+
+    public enum WindowType
+    {
+        
+    }
+    public enum ViewType
+    {
+        Window,
+        Screen,
+        Popup
+    }
+    
+}
