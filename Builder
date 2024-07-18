@@ -1,0 +1,189 @@
+using System;
+using System.Collections.Generic;
+using Core.PlayerData;
+using Core.States;
+using Core.TenureManagement;
+using Core.Utilities;
+using Implementation.Buildings;
+using Implementation.States;
+using Unity.VisualScripting;
+using UnityEngine;
+using Zenject;
+
+namespace Core.Buildings
+{
+    public interface IBuilder
+    {
+        void SubscribeDeployBuildingButtonClickEvent();
+        void UnSubscribeSetBuildingBluePrintEvent();
+        void SubscribeOnDeployBuildingBluePrint();
+        void UnsubscribeDeployBuildingButtonClickEvent();
+        void Build(Action buildingCompleteCallback);
+        void RemoveBuildingBluePrint();
+        Building Building { get; }
+    }
+    
+    public class Builder : IBuilder
+    {
+        
+        private BuildingType _currentBuildingType;
+        private List<IBuilding> _deployedBuildings;
+        private LandscapeTile _tile;
+        private LandscapeTile _previousTile;
+        private Building _building;
+        
+        private BuildingBehaviour _currentBuildingBehaviour;
+        private BuildingBehaviour _bluePrintBuilding;
+        private readonly BuildingsPrefabsDataBase _buildingsPrefabsDataBase;
+        private BuildingsPrefabsDescriptor _buildingPrefabDescriptor;
+        private readonly IBuildingsAsset _buildingsAsset;
+        private readonly BuildingsDataBase _buildingsDataBase;
+
+        public Building Building => _building;
+        
+        public Builder(BuildingsPrefabsDataBase buildingsPrefabsDataBase, IBuildingsAsset buildingsAsset, BuildingsDataBase buildingsDataBase)
+        {
+            _buildingsPrefabsDataBase = buildingsPrefabsDataBase;
+            _buildingsAsset = buildingsAsset;
+            _buildingsDataBase = buildingsDataBase;
+            _deployedBuildings = new List<IBuilding>();
+        }
+        
+        public void SubscribeDeployBuildingButtonClickEvent()
+        {
+            EventAggregator.Subscribe<DeployBuildingButtonClickEvent>(DeployBuildingHandler);
+        }
+
+        public void UnSubscribeSetBuildingBluePrintEvent()
+        {
+            EventAggregator.Unsubscribe<SetBuildingBluePrintEvent>(SetBuildBluePrintHandler);
+        }
+
+        public void UnsubscribeDeployBuildingButtonClickEvent()
+        {
+            EventAggregator.Unsubscribe<DeployBuildingButtonClickEvent>(DeployBuildingHandler);
+        }
+        
+        private void DeployBuildingHandler(object sender, DeployBuildingButtonClickEvent data)
+        {
+            EventAggregator.Post<SwitchLandTenureStateEvent>(this, new SwitchLandTenureStateEvent()
+            {
+                NextState = LandTenureStates.BuildingDeploy,
+                ExitForce = true
+            });
+            _currentBuildingType = data.BuildingType;
+            _buildingPrefabDescriptor = _buildingsPrefabsDataBase.GetBuildingData(_currentBuildingType);
+            Debug.Log($"Current Building: {data.BuildingType}");
+        }
+
+        public void Build(Action buildingCompleteCallback)
+        {
+            if (_bluePrintBuilding != null)
+            {
+                Building building;
+                
+                switch (_currentBuildingType)
+                {
+                    case BuildingType.SnackBar:
+                        building = new SnackBar();
+                        break;
+                    case BuildingType.Mansion:
+                        building = new Mansion();
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+
+                BuildingBehaviour buildingPrefab = _buildingsPrefabsDataBase.GetBuilding(_currentBuildingType);
+                _currentBuildingBehaviour = UnityEngine.Object.Instantiate(buildingPrefab, _tile.transform.position, Quaternion.identity, _tile.transform);
+                UnityEngine.Object.Destroy(_bluePrintBuilding.gameObject);
+                _bluePrintBuilding = null;
+                _currentBuildingBehaviour.SetOrderInLayer(_tile.OrderInLayer + (_buildingPrefabDescriptor.GridSize + 1));
+                building.InitializeView(_currentBuildingBehaviour);
+                _currentBuildingBehaviour.Initialize(building);
+                _buildingPrefabDescriptor = null;
+                var buildingDescriptor = _buildingsDataBase.GetBuilding(_currentBuildingType);
+                building.InitializeUpgradeLevel(1);
+                building.InitializeIncome(buildingDescriptor.Income);
+                
+                building.InitBusiness(buildingDescriptor.BusinessDescriptor);
+                
+                _deployedBuildings.Add(building);
+                
+                buildingCompleteCallback?.Invoke();
+                EventAggregator.Post<SwitchLandTenureStateEvent>(this, new SwitchLandTenureStateEvent()
+                {
+                    NextState = LandTenureStates.LandscapeOverview,
+                    ExitForce = true
+                });
+            }
+            else
+            {
+                Debug.LogWarning("Builder don't have bluePrint!");
+            }
+        }
+        
+        public void SubscribeOnDeployBuildingBluePrint()
+        {
+            EventAggregator.Subscribe<SetBuildingBluePrintEvent>(SetBuildBluePrintHandler);
+        }
+
+        public void RemoveBuildingBluePrint()
+        {
+            if (_tile == null)
+            {
+                return;
+            }
+            _tile.ReleaseTile();
+            UnityEngine.Object.Destroy(_bluePrintBuilding.gameObject);
+            _bluePrintBuilding = null;
+        }
+
+        private void CreateBuildingBluePrint()
+        {
+            
+            BuildingBehaviour bluePrintPrefab = _buildingsPrefabsDataBase.GetBuilding(_currentBuildingType);
+            var bluePrintBuilding = UnityEngine.Object.Instantiate(bluePrintPrefab, _tile.transform.position, Quaternion.identity, _tile.transform);
+            _bluePrintBuilding = bluePrintBuilding;
+            _bluePrintBuilding.GetComponent<PolygonCollider2D>().enabled = false;
+            _bluePrintBuilding.SetOrderInLayer(_tile.OrderInLayer + (_buildingPrefabDescriptor.GridSize + 1));
+            _bluePrintBuilding.AsBluePrint();
+        }
+
+
+        private void SetBuildingBluePrint()
+        {
+            if (_previousTile != null)
+            {
+                _previousTile.ReleaseTile();
+            }
+            
+            _bluePrintBuilding.transform.parent = null;
+            _bluePrintBuilding.transform.position = _tile.transform.position;
+            _bluePrintBuilding.transform.parent = _tile.transform;
+            _bluePrintBuilding.SetOrderInLayer(_tile.OrderInLayer + (_buildingPrefabDescriptor.GridSize + 1));
+        }
+        
+        private void SetBuildBluePrintHandler(object sender, SetBuildingBluePrintEvent data)
+        {
+            
+            if (_tile != null)
+            {
+                _previousTile = _tile;
+            }
+            _tile = data.Tile;
+            
+            if (_bluePrintBuilding == null)
+            {
+                CreateBuildingBluePrint();
+            }
+            else
+            {
+                SetBuildingBluePrint();
+            }
+            
+            _tile.OccupyTile();
+            
+        }
+    }
+}
